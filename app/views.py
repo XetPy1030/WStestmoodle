@@ -1,11 +1,12 @@
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from app.models import Product, Cart, Order
+from app.permissions import IsClient
 from app.serializers import LoginSerializer, RegisterSerializer, ProductSerializer, OrderSerializer
 
 
@@ -14,9 +15,6 @@ class Login(ObtainAuthToken):
     format_kwarg = None
 
     def post(self, request, *args, **kwargs):
-        data = request.data
-        data['username'] = data.pop('email')
-
         response = super().post(request, *args, **kwargs)
         response.data = {
             'data': {
@@ -49,7 +47,7 @@ from rest_framework.permissions import IsAuthenticated
 
 
 @api_view(['POST', 'DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsClient])
 def add_to_cart(request, product_id):
     if request.method == 'POST':
         product = Product.objects.filter(pk=product_id)
@@ -58,7 +56,7 @@ def add_to_cart(request, product_id):
             err.status_code = 404
 
             raise err
-        cart = Cart.objects.create(
+        Cart.objects.create(
             user=request.user,
             item=product[0]
         )
@@ -68,7 +66,11 @@ def add_to_cart(request, product_id):
             }
         }, 201)
     if request.method == 'DELETE':
-        product_cart = Cart.objects.get(pk=product_id)
+        product = Product.objects.get(id=product_id)
+        products_cart = Cart.objects.filter(item=product, user=request.user)
+        if not products_cart.exists():
+            raise APIException('Not found')
+        product_cart = products_cart[0]
         if product_cart.user != request.user:
             err = APIException('Forbidden for you')
             err.status_code = 403
@@ -82,11 +84,9 @@ def add_to_cart(request, product_id):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsClient])
 def cart_view(request):
     cart = Cart.objects.filter(user=request.user)
-    for i in cart:
-        i.item.id = i.id
     products = [i.item for i in cart]
     return Response({
         'body': ProductSerializer(products, many=True).data
@@ -94,7 +94,7 @@ def cart_view(request):
 
 
 @api_view(['POST', 'GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsClient])
 def order_view(request):
     if request.method == 'POST':
         cart_products = Cart.objects.filter(user=request.user)

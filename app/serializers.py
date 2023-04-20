@@ -4,21 +4,25 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework.authtoken.serializers import AuthTokenSerializer
 from rest_framework.exceptions import APIException
 
+from app.exc import AppException
 from app.models import User, Product, Order
 
 
 class LoginSerializer(AuthTokenSerializer):
+    email = serializers.CharField(
+        write_only=True
+    )
+    username = None
+
     def validate(self, attrs):
-        username = attrs.get('username')
+        username = attrs.get('email')
         password = attrs.get('password')
 
         if username and password:
             user = authenticate(request=self.context.get('request'),
                                 username=username, password=password)
             if not user:
-                err = APIException('Authentication failed')
-                err.status_code = 401
-                raise err
+                raise AppException('Authentication failed', 401)
         else:
             msg = _('Must include "username" and "password".')
             raise serializers.ValidationError(msg, code='authorization')
@@ -34,9 +38,7 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate(self, values):
         if User.objects.filter(email=values['email']).exists():
-            err = APIException('email must be unique')
-            err.status_code = 400
-            raise err
+            raise AppException('email must be unique', 400)
 
         user = User.objects.create_user(
             values['email'],
@@ -58,6 +60,8 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
+    products = ProductSerializer(many=True) # НЕ ТАК ДЛЯ WS
+
     class Meta:
         model = Order
         fields = '__all__'

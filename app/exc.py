@@ -1,12 +1,17 @@
 from django.core.exceptions import ObjectDoesNotExist
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, APIException
 from rest_framework.views import exception_handler
+
+
+class AppException(APIException):
+    def __init__(self, detail, status_code):
+        super().__init__(detail)
+        self.status_code = status_code
 
 
 def handler(exc, context):
     if isinstance(exc, ObjectDoesNotExist):
-        exc.status_code = 404
-        exc.detail = 'Object not found'
+        exc = AppException(f'Объект не найден', 404)
     if isinstance(exc, ValidationError):
         exc.detail = {
             'error': {
